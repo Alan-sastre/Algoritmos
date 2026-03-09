@@ -18,7 +18,7 @@ const config = {
   },
   scene: [Puzzle1Scene, Puzzle2Scene, Puzzle3Scene],
   scale: {
-    mode: Phaser.Scale.FIT,
+    mode: Phaser.Scale.ENVELOP,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
 };
