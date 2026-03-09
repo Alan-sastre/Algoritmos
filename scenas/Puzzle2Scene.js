@@ -27,6 +27,8 @@ export default class Puzzle2Scene extends Phaser.Scene {
     this.slots = []; // Los espacios para colocar las formas
     this.paletteShapes = []; // Las formas en la paleta para arrastrar
     this.hand = null; // La mano guía
+    this.itemSpacing = 90;
+    this.itemScale = 1;
   }
 
   preload() {
@@ -74,7 +76,12 @@ export default class Puzzle2Scene extends Phaser.Scene {
         graphics.fillCircle(size / 2, size / 2, shapeSize / 2);
         graphics.strokeCircle(size / 2, size / 2, shapeSize / 2);
         graphics.fillStyle(0xffffff, 0.22);
-        graphics.fillEllipse(size / 2 - 8, size / 2 - 10, shapeSize * 0.52, shapeSize * 0.26);
+        graphics.fillEllipse(
+          size / 2 - 8,
+          size / 2 - 10,
+          shapeSize * 0.52,
+          shapeSize * 0.26,
+        );
       } else if (config.type === "triangle") {
         const topX = size / 2;
         const topY = offset + 2;
@@ -109,8 +116,8 @@ export default class Puzzle2Scene extends Phaser.Scene {
 
     // --- Mano Guía ---
     this.hand = this.add
-      .text(0, 0, "👆🏻", { fontSize: "80px" })
-      .setOrigin(0.2, 0)
+      .text(0, 0, "👆🏻", { fontSize: "64px" })
+      .setOrigin(0.5)
       .setDepth(1000)
       .setAlpha(0);
 
@@ -118,16 +125,35 @@ export default class Puzzle2Scene extends Phaser.Scene {
   }
 
   create() {
+    this.updateLayoutMetrics();
+    const centerX = this.cameras.main.centerX;
+    const centerY = this.cameras.main.centerY;
+
     // Fondo claro y limpio
-    this.add.rectangle(500, 300, 1000, 600, 0xf0f3f4);
+    this.add.rectangle(centerX, centerY, 1000, 500, 0xf0f3f4);
 
     // Contenedores para las áreas de la UI
-    this.patternContainer = this.add.container(500, 80);
-    this.slotsContainer = this.add.container(500, 250);
-    this.paletteContainer = this.add.container(500, 450);
+    this.patternContainer = this.add.container(centerX, this.patternY);
+    this.slotsContainer = this.add.container(centerX, this.slotsY);
+    this.paletteContainer = this.add.container(centerX, this.paletteY);
 
     // Iniciar el primer nivel
     this.startLevel();
+  }
+
+  updateLayoutMetrics() {
+    const camera = this.cameras.main;
+    const maxPatternLength = 5;
+    const usableWidth = camera.width - 160;
+    this.itemSpacing = Phaser.Math.Clamp(
+      usableWidth / maxPatternLength,
+      68,
+      90,
+    );
+    this.itemScale = Phaser.Math.Clamp(this.itemSpacing / 90, 0.78, 1);
+    this.patternY = Phaser.Math.Clamp(camera.height * 0.16, 60, 92);
+    this.slotsY = Phaser.Math.Clamp(camera.height * 0.5, 210, 260);
+    this.paletteY = Phaser.Math.Clamp(camera.height * 0.8, 360, 410);
   }
 
   // --- Métodos del Nuevo Puzzle ---
@@ -136,6 +162,12 @@ export default class Puzzle2Scene extends Phaser.Scene {
    * Inicia y configura el nivel actual.
    */
   startLevel() {
+    this.updateLayoutMetrics();
+    const centerX = this.cameras.main.centerX;
+    this.patternContainer.setPosition(centerX, this.patternY);
+    this.slotsContainer.setPosition(centerX, this.slotsY);
+    this.paletteContainer.setPosition(centerX, this.paletteY);
+
     // Limpiar contenedores y arrays
     this.patternContainer.removeAll(true);
     this.slotsContainer.removeAll(true);
@@ -174,19 +206,23 @@ export default class Puzzle2Scene extends Phaser.Scene {
    * Renderiza los elementos de la UI en la pantalla y configura el drag-and-drop.
    */
   renderUI() {
-    const patternTotalWidth = this.pattern.length * 90;
-    const startX = -(patternTotalWidth / 2) + 45;
+    const startX = -((this.pattern.length - 1) * this.itemSpacing) / 2;
 
     // 1. Renderizar el patrón a seguir (arriba)
     this.pattern.forEach((shapeKey, index) => {
-      const x = startX + index * 90;
-      this.patternContainer.add(this.add.image(x, 0, shapeKey).setAlpha(0.7));
+      const x = startX + index * this.itemSpacing;
+      this.patternContainer.add(
+        this.add.image(x, 0, shapeKey).setAlpha(0.7).setScale(this.itemScale),
+      );
     });
 
     // 2. Renderizar los slots de construcción (centro)
     this.pattern.forEach((_, index) => {
-      const x = startX + index * 90;
-      const slot = this.add.image(x, 0, "slot").setInteractive();
+      const x = startX + index * this.itemSpacing;
+      const slot = this.add
+        .image(x, 0, "slot")
+        .setScale(this.itemScale)
+        .setInteractive();
       slot.setData("index", index);
       this.slotsContainer.add(slot);
       this.slots.push(slot);
@@ -198,10 +234,12 @@ export default class Puzzle2Scene extends Phaser.Scene {
       "circle_blue",
       "triangle_yellow",
     ]);
+    const paletteStartX = -this.itemSpacing;
     paletteKeys.forEach((shapeKey, index) => {
-      const x = -100 + index * 100;
+      const x = paletteStartX + index * this.itemSpacing;
       const shape = this.add
         .image(x, 0, shapeKey)
+        .setScale(this.itemScale)
         .setInteractive({ draggable: true });
       shape.setData({ key: shapeKey, startX: x, startY: 0 });
       this.paletteContainer.add(shape);
@@ -239,14 +277,17 @@ export default class Puzzle2Scene extends Phaser.Scene {
               worldY,
               slotWorldX,
               slotWorldY,
-            ) < 60
+            ) <
+            60 * this.itemScale
           ) {
             if (
               this.pattern[index] === shapeKey &&
               this.playerPattern[index] === null
             ) {
               // --- Acción Correcta ---
-              const newShape = this.add.image(slot.x, slot.y, shapeKey);
+              const newShape = this.add
+                .image(slot.x, slot.y, shapeKey)
+                .setScale(this.itemScale);
               this.slotsContainer.add(newShape);
               this.playerPattern[index] = shapeKey;
               this.showFeedback(true, newShape);
@@ -340,10 +381,31 @@ export default class Puzzle2Scene extends Phaser.Scene {
     const targetSlot = this.slots[nextEmptyIndex];
 
     if (targetShape && targetSlot) {
-      const startX = targetShape.x + this.paletteContainer.x;
-      const startY = targetShape.y + this.paletteContainer.y;
-      const endX = targetSlot.x + this.slotsContainer.x;
-      const endY = targetSlot.y + this.slotsContainer.y;
+      const safeMargin = 38;
+      const minX = safeMargin;
+      const maxX = this.cameras.main.width - safeMargin;
+      const minY = safeMargin;
+      const maxY = this.cameras.main.height - safeMargin;
+      const startX = Phaser.Math.Clamp(
+        targetShape.x + this.paletteContainer.x,
+        minX,
+        maxX,
+      );
+      const startY = Phaser.Math.Clamp(
+        targetShape.y + this.paletteContainer.y,
+        minY,
+        maxY,
+      );
+      const endX = Phaser.Math.Clamp(
+        targetSlot.x + this.slotsContainer.x,
+        minX,
+        maxX,
+      );
+      const endY = Phaser.Math.Clamp(
+        targetSlot.y + this.slotsContainer.y,
+        minY,
+        maxY,
+      );
 
       this.hand.setPosition(startX, startY).setAlpha(1);
 
